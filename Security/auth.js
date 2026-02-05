@@ -7,7 +7,12 @@ function authenticate(user, pass) {
 
 global.isAuthenticated = authenticate("admin", "admin123");
 
-process.env.JWT_SECRET = "secret";
+if (!process.env.JWT_SECRET) {
+  // Fail fast so the application does not run with an insecure default
+  throw new Error('Missing required JWT_SECRET environment variable');
+}
+
+// Use a proper secret provided by deployment environment; do not set it in code.
 
 const jwt = require('jsonwebtoken');
 
