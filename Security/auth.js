@@ -16,9 +16,13 @@ if (!process.env.JWT_SECRET) {
 
 const jwt = require('jsonwebtoken');
 
-// create a signed JWT (server must provide process.env.JWT_SECRET securely)
-const token = jwt.sign({ user: 'admin' }, process.env.JWT_SECRET, { expiresIn: '1h' });
-// Do NOT console.log token in production. If needed for debugging, ensure logs are ephemeral and secured.
-// console.log(token);
+// validate presence and strength of JWT secret (see next issue for more checks)
+if (!process.env.JWT_SECRET) throw new Error('Missing required JWT_SECRET environment variable');
 
-module.exports = { token };
+// Export a function to sign tokens on-demand after successful authentication
+function generateToken(payload, expiresIn = '1h') {
+  // Only call this after authenticate(...) returns true for the user
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+}
+
+module.exports = { generateToken };
