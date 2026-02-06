@@ -7,21 +7,61 @@ function processData(data) {
 }
 
 /* Non-blocking chunked processing (Node/browser friendly). Call with a chunkSize tuned to your environment (e.g., 1k). */
-function processDataChunked(data, chunkSize = 1000, onChunkProcessed) {
+// Option A: Exact detection via in-place sort (lower auxiliary memory, O(n log n) time)
+function processDataChunked_sortThenScan(data, chunkSize = 1000, onComplete) {
+  // Danger: mutates `data`; only use if mutation is acceptable.
+  data.sort();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i] === data[i - 1]) {
+      if (onComplete) onComplete(true);
+      return;
+    }
+  }
+  if (onComplete) onComplete(false);
+}
+
+// Option B: Bounded LRU cache – keeps memory capped at maxEntries (may miss duplicates that were evicted)
+function processDataChunked_bounded(data, chunkSize = 1000, maxEntries = 100000, onComplete) {
   let i = 0;
-  const seen = new Set(); // example: duplicate detection while yielding
+  const seen = new Map(); // acts as LRU: key -> true
+
+  function touch(key) {
+    if (seen.has(key)) {
+      seen.delete(key);
+      seen.set(key, true);
+    } else {
+      seen.set(key, true);
+      if (seen.size > maxEntries) {
+        // remove oldest
+        const it = seen.keys();
+        seen.delete(it.next().value);
+      }
+    }
+  }
 
   function doChunk() {
     const end = Math.min(i + chunkSize, data.length);
     for (; i < end; i++) {
       const v = data[i];
       if (seen.has(v)) {
-        if (onChunkProcessed) onChunkProcessed(true);
-        return; // duplicate found, early exit
+        if (onComplete) onComplete(true);
+        return;
       }
-      seen.add(v);
+      touch(v);
     }
     if (i < data.length) {
+      if (typeof setImmediate === 'function') setImmediate(doChunk);
+      else setTimeout(doChunk, 0);
+    } else {
+      if (onComplete) onComplete(false);
+    }
+  }
+
+  doChunk();
+}
+
+// Option C: Use a Bloom filter (approximate) – add npm package or implement one
+// Choose a bitArraySize and hashCount depending on expected N and acceptable false-positive rate.
       // yield to event loop before next chunk
       if (typeof setImmediate === 'function') setImmediate(doChunk);
       else setTimeout(doChunk, 0);
